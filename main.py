@@ -1,9 +1,14 @@
 import logging
 import os
 import re
-from datetime import datetime
+import random
+from datetime import datetime, time
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram import Update
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
+
 from config import BOT_TOKEN, FORUM_CHAT_ID, RATING_TOPIC_ID, ADMIN_IDS, EXERCISES, TIMEZONE
 import database
 
@@ -11,17 +16,15 @@ import database
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Инициализируем базу данных при запуске
+# Инициализируем базу данных
 database.init_db()
 
 # ---------- КОМАНДЫ ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет сообщение при получении команды /start."""
     user = update.effective_user
     await update.message.reply_text(f'Бот "Стая Волков" запущен! Привет, {user.first_name}! 🐺\nПиши отчёты в свою тему!')
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет сообщение при получении команды /help."""
     help_text = (
         "📋 *Формат отчёта:*\n"
         "`отжимания 100, приседания 200, пресс 50`\n"
@@ -37,7 +40,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 async def add_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Добавляет нового участника (только для админов)."""
     user_id = update.effective_user.id
     if user_id not in ADMIN_IDS:
         await update.message.reply_text("❌ Только админы могут добавлять участников.")
@@ -59,9 +61,7 @@ async def add_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ topic_id должен быть числом.")
         return
     
-    # Здесь нужно получить telegram_id по username (упрощённо)
-    # В реальности нужно хранить telegram_id при добавлении
-    # Пока используем topic_id как временный идентификатор
+    # Используем topic_id как временный telegram_id
     success = database.add_user(topic_id, name, nickname, topic_id)
     
     if success:
@@ -69,12 +69,32 @@ async def add_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Ошибка при добавлении.")
 
-# ---------- ПАРСИНГ ОТЧЁТОВ ----------
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает статистику пользователя."""
+    if not update.message or not update.message.message_thread_id:
+        await update.message.reply_text("Эта команда работает только в личных темах.")
+        return
+    
+    topic_id = update.message.message_thread_id
+    user = database.get_user_by_topic(topic_id)
+    
+    if not user:
+        await update.message.reply_text("❌ Вы не зарегистрированы. Обратитесь к админу.")
+        return
+    
+    name, nickname, streak, total_points = user
+    response = (
+        f"📊 *Статистика {name} ({nickname})*\n"
+        f"🔥 Серия дней: {streak}\n"
+        f"🏆 Всего очков: {total_points}\n"
+        f"🐺 Держись, братишка!"
+    )
+    await update.message.reply_text(response, parse_mode='Markdown')
+
+# ---------- ПАРСИНГ И СОХРАНЕНИЕ ОТЧЁТОВ ----------
 def parse_report(text: str):
-    """Парсит текст отчёта и возвращает словарь с упражнениями."""
     text = text.lower().replace('день', '').replace(':', ' ').replace(',', ' ')
     
-    # Шаблоны для поиска: "отжимания 100" или "100 отжиманий"
     patterns = {
         'отжимания': r'(?:отжимания|отжиманий|отжим)\s*(\d+)',
         'приседания': r'(?:приседания|приседаний|присед)\s*(\d+)',
@@ -93,7 +113,6 @@ def parse_report(text: str):
     return result
 
 def calculate_points(exercises_dict):
-    """Рассчитывает очки и проверяет минимумы."""
     total_points = 0
     day_completed = True
     failed_exercises = []
@@ -112,34 +131,38 @@ def calculate_points(exercises_dict):
     return total_points, day_completed, failed_exercises
 
 async def handle_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает отчёт пользователя."""
-    # Проверяем, что сообщение из темы форума
     if not update.message or not update.message.message_thread_id:
         return
     
     topic_id = update.message.message_thread_id
-    user_id = update.effective_user.id
     text = update.message.text
     
     if not text:
         return
     
-    # Парсим отчёт
     exercises = parse_report(text)
     if not exercises:
-        # Не похоже на отчёт
         return
     
-    # Рассчитываем очки
     points, day_completed, failed = calculate_points(exercises)
+    
+    # Сохраняем в БД
+    database.save_daily_stats(topic_id, exercises, points, day_completed)
     
     # Формируем ответ
     if day_completed:
+        praise = [
+            "🔥 Отлично, братишка! День засчитан!",
+            "🐺 Стая гордится тобой! Так держать!",
+            "💪 Мощно! Очки твои, серия растёт!",
+            "🏔️ Царь горы! Продолжай в том же духе!",
+            "🎯 В яблочко! Ты сегодня - анаконда!"
+        ]
         response = f"✅ *Отчёт принят!*\n"
         for ex, count in exercises.items():
             response += f"• {ex}: {count}\n"
         response += f"\n🎯 *Очки за день:* {points:.1f}\n"
-        response += "🔥 *День засчитан!* Так держать, братишка! 🐺"
+        response += f"📈 *{random.choice(praise)}*"
     else:
         response = f"⚠️ *Есть недобор!*\n"
         for ex, count, minimum in failed:
@@ -148,20 +171,132 @@ async def handle_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(response, parse_mode='Markdown')
 
+# ---------- РАСПИСАНИЕ ----------
+async def send_morning_message():
+    """Отправляет утреннее сообщение в 8:00."""
+    morning_phrases = [
+        "☀️ Доброе утро, стая! Просыпайтесь, львы! Сегодня день новых побед!",
+        "🐺 Эй, волки! Солнце встало, пора показывать зубы! Кто сегодня король горы?",
+        "💪 Утро, братишки! Сегодняшний день принадлежит сильнейшим! За работу!",
+        "🏔️ Стая, подъём! Горы не ждут. Кто сделает первые 100 отжиманий?"
+    ]
+    
+    app = Application.builder().token(BOT_TOKEN).build()
+    phrase = random.choice(morning_phrases)
+    
+    try:
+        await app.bot.send_message(
+            chat_id=FORUM_CHAT_ID,
+            message_thread_id=RATING_TOPIC_ID,
+            text=f"*{phrase}*",
+            parse_mode='Markdown'
+        )
+        logger.info("Утреннее сообщение отправлено")
+    except Exception as e:
+        logger.error(f"Ошибка отправки утреннего сообщения: {e}")
+    finally:
+        await app.shutdown()
+
+async def send_rating():
+    """Отправляет рейтинг в 10:00."""
+    rating = database.get_today_rating()
+    
+    if not rating:
+        text = "📊 *Рейтинг за сегодня*\n\nПока никто не отчитался. Стая, вы где? 🐺"
+    else:
+        text = "🏔️ *ВЕРШИНА СИЛЫ | Рейтинг за сегодня*\n\n"
+        for i, (name, nickname, streak, points, push, squat, abs_cnt, burp, pull) in enumerate(rating, 1):
+            text += f"{i}. *{name} {nickname}*"
+            if streak > 0:
+                text += f" [Серия: {str(streak)+'🔥' if streak >= 3 else streak}]\n"
+            else:
+                text += "\n"
+            
+            if points:
+                text += f"   Очки: {points:.1f} | "
+                if push: text += f"Отж: {push} "
+                if squat: text += f"Прис: {squat} "
+                if abs_cnt: text += f"Пр: {abs_cnt} "
+                if burp: text += f"Бер: {burp} "
+                if pull: text += f"Под: {pull}"
+                text += "\n"
+            else:
+                text += "   Ещё не отчитался\n"
+    
+    app = Application.builder().token(BOT_TOKEN).build()
+    
+    try:
+        await app.bot.send_message(
+            chat_id=FORUM_CHAT_ID,
+            message_thread_id=RATING_TOPIC_ID,
+            text=text,
+            parse_mode='Markdown'
+        )
+        logger.info("Рейтинг отправлен")
+    except Exception as e:
+        logger.error(f"Ошибка отправки рейтинга: {e}")
+    finally:
+        await app.shutdown()
+
+async def send_evening_reminder():
+    """Отправляет вечернее напоминание в 21:00."""
+    evening_phrases = [
+        "🌙 Эй, стая! Не забыли про тренировку? До 23:59 осталось мало времени!",
+        "🐺 Вечер, братишки! Кто ещё не отчитался? Пора показывать результат!",
+        "💀 Волки, время поджимает! Не дайте серии сгореть!",
+        "🏆 Вечерняя проверка! Кто сегодня в топе? Отчитывайтесь!"
+    ]
+    
+    app = Application.builder().token(BOT_TOKEN).build()
+    phrase = random.choice(evening_phrases)
+    
+    try:
+        await app.bot.send_message(
+            chat_id=FORUM_CHAT_ID,
+            message_thread_id=RATING_TOPIC_ID,
+            text=f"*{phrase}*",
+            parse_mode='Markdown'
+        )
+        logger.info("Вечернее напоминание отправлено")
+    except Exception as e:
+        logger.error(f"Ошибка отправки вечернего напоминания: {e}")
+    finally:
+        await app.shutdown()
+
+def setup_scheduler(application: Application):
+    """Настраивает расписание задач."""
+    scheduler = AsyncIOScheduler(timezone=pytz.timezone(TIMEZONE))
+    
+    # 8:00 - утреннее сообщение
+    scheduler.add_job(send_morning_message, CronTrigger(hour=8, minute=0))
+    
+    # 10:00 - рейтинг
+    scheduler.add_job(send_rating, CronTrigger(hour=10, minute=0))
+    
+    # 21:00 - вечернее напоминание
+    scheduler.add_job(send_evening_reminder, CronTrigger(hour=21, minute=0))
+    
+    scheduler.start()
+    logger.info("Планировщик запущен")
+    return scheduler
+
 # ---------- ОСНОВНАЯ ФУНКЦИЯ ----------
 def main():
-    """Запускает бота."""
     application = Application.builder().token(BOT_TOKEN).build()
     
     # Обработчики команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("add_user", add_user_command))
+    application.add_handler(CommandHandler("stats", stats_command))
     
-    # Обработчик текстовых сообщений (для отчётов)
+    # Обработчик отчётов
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_report))
     
-    # На Bothost всегда используем вебхук
+    # Настраиваем расписание
+    scheduler = setup_scheduler(application)
+    
+    # Запускаем
     webhook_host = os.environ.get('BOTHOST_HOST', '')
     port = int(os.environ.get('PORT', 8080))
     
@@ -176,7 +311,7 @@ def main():
             drop_pending_updates=True
         )
     else:
-        logger.info("Переменная BOTHOST_HOST не найдена. Запуск в режиме polling...")
+        logger.info("Запуск в режиме polling...")
         application.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
