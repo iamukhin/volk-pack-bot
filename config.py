@@ -2,7 +2,7 @@
 # НИКОМУ НЕ ПОКАЗЫВАЙТЕ ЭТОТ ФАЙЛ И НЕ ВЫГРУЖАЙТЕ ЕГО В ПУБЛИЧНЫЙ ДОСТУП!
 
 # 1. Токен бота от @BotFather
-BOT_TOKEN = 8200154586:AAE3eoU4XJbGCATsUJUbHeCxxWpNEQuU5iM  # Замените на свой токен, например "6543211234:AAHdqTcvch1fRW_8gQcC7Zb..."
+BOT_TOKEN = "8200154586:AAE3eoU4XJbGCATsUJUbHeCxxWpNEQuU5iM"  # Замените на свой токен, например "6543211234:AAHdqTcvch1fRW_8gQcC7Zb..."
 
 # 2. ID вашего форума (чат, где проходил челлендж)
 FORUM_CHAT_ID = -1003378743608  # Ваш ID форума
