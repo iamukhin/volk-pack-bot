@@ -10,11 +10,17 @@ logger = logging.getLogger(__name__)
 # Простая команда для проверки
 async def start(update, context):
     """Отправляет сообщение при получении команды /start."""
-    await update.message.reply_text('Бот "Стая Волков" запущен! 🐺\nПиши мне отчёты в свою тему!')
+    user = update.effective_user
+    await update.message.reply_text(f'Бот "Стая Волков" запущен! Привет, {user.first_name}! 🐺\nПиши мне отчёты в свою тему!')
 
 async def help_command(update, context):
     """Отправляет сообщение при получении команды /help."""
-    await update.message.reply_text('Формат отчёта: "отжимания 100, приседания 200"')
+    help_text = (
+        "Формат отчёта:\n"
+        "отжимания 100, приседания 200, пресс 50\n"
+        "Или: день 5, берпи 60, подтягивания 30"
+    )
+    await update.message.reply_text(help_text)
 
 def main():
     """Запускает бота."""
@@ -25,21 +31,31 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
 
-    # Запускаем вебхук (нужно для Bothost)
+    # На Bothost всегда используем вебхук
+    # Определяем URL вебхука (адрес, куда Telegram будет слать сообщения)
+    # Bothost обычно предоставляет домен вида: ваш-бот-12345.bothost.app
+    # Нужно узнать ваш домен на Bothost
+    webhook_host = os.environ.get('BOTHOST_HOST', '')  # Bothost может установить эту переменную
     port = int(os.environ.get('PORT', 8080))
-    webhook_url = os.environ.get('BOTHOST_URL', '') + "/" + BOT_TOKEN
     
-    if webhook_url:
+    if webhook_host:
+        # Если хост известен, используем вебхук
+        webhook_url = f"https://{webhook_host}/{BOT_TOKEN}"
+        logger.info(f"Запуск с вебхуком: {webhook_url}")
+        
+        # Запускаем вебхук
         application.run_webhook(
             listen="0.0.0.0",
             port=port,
             url_path=BOT_TOKEN,
-            webhook_url=webhook_url
+            webhook_url=webhook_url,
+            drop_pending_updates=True
         )
     else:
-        # Локальный запуск для отладки
-        logger.info("Запуск в режиме polling (локально)...")
-        application.run_polling()
+        # Если хост неизвестен, запускаем в режиме polling (для отладки)
+        # Bothost может не передавать переменную, поэтому добавим fallback
+        logger.info("Переменная BOTHOST_HOST не найдена. Запуск в режиме polling...")
+        application.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
     main()
