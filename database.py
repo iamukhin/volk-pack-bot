@@ -1,6 +1,5 @@
 import sqlite3
 import logging
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +43,7 @@ def init_db():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS phrases (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            type TEXT,  # 'morning', 'evening', 'praise', 'troll', 'fact', 'failure'
+            type TEXT,
             text TEXT,
             media_path TEXT
         )
@@ -73,6 +72,5 @@ def add_user(telegram_id, name, nickname, topic_id):
         conn.close()
 
 if __name__ == '__main__':
-    # При прямом запуске файла инициализируем БД
     init_db()
     print("База данных создана. Добавьте пользователей командой /add_user")
