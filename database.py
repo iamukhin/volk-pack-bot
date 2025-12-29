@@ -9,6 +9,7 @@ def init_db():
     conn = sqlite3.connect('volk_bot.db')
     cursor = conn.cursor()
     
+    # Таблица пользователей (ДОБАВЛЕНО freeze_days)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18,10 +19,12 @@ def init_db():
             topic_id INTEGER UNIQUE,
             current_streak INTEGER DEFAULT 0,
             total_points INTEGER DEFAULT 0,
+            freeze_days INTEGER DEFAULT 0,
             is_active BOOLEAN DEFAULT 1
         )
     ''')
     
+    # Таблица ежедневной статистики
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS daily_stats (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,6 +41,7 @@ def init_db():
         )
     ''')
     
+    # Таблица фраз
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS phrases (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,7 +98,7 @@ def save_daily_stats(user_topic_id, exercises_dict, points, day_completed):
             exercises_dict.get('отжимания', 0),
             exercises_dict.get('приседания', 0),
             exercises_dict.get('пресс', 0),
-            exercises_dict.get('берпи', 0) + exercises_dict.get('бурпи', 0),
+            exercises_dict.get('берпи', 0),  # ТОЛЬКО берпи, без сложения
             exercises_dict.get('подтягивания', 0),
             points,
             1 if day_completed else 0
@@ -146,13 +150,130 @@ def get_user_by_topic(topic_id):
     cursor = conn.cursor()
     
     cursor.execute('''
-        SELECT name, nickname, current_streak, total_points 
+        SELECT name, nickname, current_streak, total_points, freeze_days
         FROM users WHERE topic_id = ?
     ''', (topic_id,))
     
     user = cursor.fetchone()
     conn.close()
     return user
+
+def use_freeze_day(user_topic_id):
+    """Использовать один день заморозки."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            UPDATE users 
+            SET freeze_days = freeze_days - 1,
+                current_streak = current_streak + 1
+            WHERE topic_id = ? AND freeze_days > 0
+        ''', (user_topic_id,))
+        
+        conn.commit()
+        success = cursor.rowcount > 0
+        
+        # Создаём запись в daily_stats о использовании заморозки
+        if success:
+            cursor.execute('SELECT id FROM users WHERE topic_id = ?', (user_topic_id,))
+            user = cursor.fetchone()
+            if user:
+                user_id = user[0]
+                today = datetime.now().date()
+                cursor.execute('''
+                    INSERT OR IGNORE INTO daily_stats 
+                    (user_id, date, day_completed)
+                    VALUES (?, ?, 1)
+                ''', (user_id, today))
+                conn.commit()
+        
+        conn.close()
+        return success
+        
+    except Exception as e:
+        logger.error(f"Ошибка использования заморозки: {e}")
+        conn.close()
+        return False
+
+def buy_freeze_day(user_topic_id, cost_points):
+    """Купить день заморозки за очки."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    try:
+        # Проверяем, хватает ли очков
+        cursor.execute('SELECT total_points FROM users WHERE topic_id = ?', (user_topic_id,))
+        user = cursor.fetchone()
+        
+        if not user or user[0] < cost_points:
+            return False
+        
+        # Списываем очки и добавляем день заморозки
+        cursor.execute('''
+            UPDATE users 
+            SET total_points = total_points - ?,
+                freeze_days = freeze_days + 1
+            WHERE topic_id = ?
+        ''', (cost_points, user_topic_id))
+        
+        conn.commit()
+        success = cursor.rowcount > 0
+        conn.close()
+        return success
+        
+    except Exception as e:
+        logger.error(f"Ошибка покупки заморозки: {e}")
+        conn.close()
+        return False
+
+def get_all_users():
+    """Возвращает всех пользователей."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT name, nickname, topic_id, current_streak, total_points, freeze_days
+        FROM users WHERE is_active = 1
+        ORDER BY name
+    ''')
+    
+    users = cursor.fetchall()
+    conn.close()
+    return users
+
+def reset_all_stats():
+    """Сбрасывает всю статистику."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('UPDATE users SET current_streak = 0, total_points = 0, freeze_days = 0')
+        cursor.execute('DELETE FROM daily_stats')
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка сброса статистики: {e}")
+        return False
+    finally:
+        conn.close()
+
+def reset_today_stats():
+    """Сбрасывает сегодняшнюю статистику."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    try:
+        today = datetime.now().date()
+        cursor.execute('DELETE FROM daily_stats WHERE date = ?', (today,))
+        cursor.execute('UPDATE users SET current_streak = 0')
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка сброса сегодняшней статистики: {e}")
+        return False
+    finally:
+        conn.close()
 
 if __name__ == '__main__':
     init_db()
