@@ -5,9 +5,6 @@ import random
 from datetime import datetime, time
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram import Update
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
-import pytz
 
 from config import BOT_TOKEN, FORUM_CHAT_ID, RATING_TOPIC_ID, ADMIN_IDS, EXERCISES, TIMEZONE
 import database
@@ -171,9 +168,9 @@ async def handle_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(response, parse_mode='Markdown')
 
-# ---------- РАСПИСАНИЕ ----------
-async def send_morning_message():
-    """Отправляет утреннее сообщение в 8:00."""
+# ---------- РАСПИСАНИЕ (исправлено для вебхука) ----------
+async def send_morning_message(context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет утреннее сообщение в 8:00 МСК = 4:00 NSK."""
     morning_phrases = [
         "☀️ Доброе утро, стая! Просыпайтесь, львы! Сегодня день новых побед!",
         "🐺 Эй, волки! Солнце встало, пора показывать зубы! Кто сегодня король горы?",
@@ -181,24 +178,21 @@ async def send_morning_message():
         "🏔️ Стая, подъём! Горы не ждут. Кто сделает первые 100 отжиманий?"
     ]
     
-    app = Application.builder().token(BOT_TOKEN).build()
     phrase = random.choice(morning_phrases)
     
     try:
-        await app.bot.send_message(
+        await context.bot.send_message(
             chat_id=FORUM_CHAT_ID,
             message_thread_id=RATING_TOPIC_ID,
             text=f"*{phrase}*",
             parse_mode='Markdown'
         )
-        logger.info("Утреннее сообщение отправлено")
+        logger.info("Утреннее сообщение отправлено (8:00 МСК = 4:00 NSK)")
     except Exception as e:
         logger.error(f"Ошибка отправки утреннего сообщения: {e}")
-    finally:
-        await app.shutdown()
 
-async def send_rating():
-    """Отправляет рейтинг в 10:00."""
+async def send_rating(context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет рейтинг в 10:00 МСК = 6:00 NSK."""
     rating = database.get_today_rating()
     
     if not rating:
@@ -223,23 +217,19 @@ async def send_rating():
             else:
                 text += "   Ещё не отчитался\n"
     
-    app = Application.builder().token(BOT_TOKEN).build()
-    
     try:
-        await app.bot.send_message(
+        await context.bot.send_message(
             chat_id=FORUM_CHAT_ID,
             message_thread_id=RATING_TOPIC_ID,
             text=text,
             parse_mode='Markdown'
         )
-        logger.info("Рейтинг отправлен")
+        logger.info("Рейтинг отправлен (10:00 МСК = 6:00 NSK)")
     except Exception as e:
         logger.error(f"Ошибка отправки рейтинга: {e}")
-    finally:
-        await app.shutdown()
 
-async def send_evening_reminder():
-    """Отправляет вечернее напоминание в 21:00."""
+async def send_evening_reminder(context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет вечернее напоминание в 21:00 МСК = 17:00 NSK."""
     evening_phrases = [
         "🌙 Эй, стая! Не забыли про тренировку? До 23:59 осталось мало времени!",
         "🐺 Вечер, братишки! Кто ещё не отчитался? Пора показывать результат!",
@@ -247,38 +237,59 @@ async def send_evening_reminder():
         "🏆 Вечерняя проверка! Кто сегодня в топе? Отчитывайтесь!"
     ]
     
-    app = Application.builder().token(BOT_TOKEN).build()
     phrase = random.choice(evening_phrases)
     
     try:
-        await app.bot.send_message(
+        await context.bot.send_message(
             chat_id=FORUM_CHAT_ID,
             message_thread_id=RATING_TOPIC_ID,
             text=f"*{phrase}*",
             parse_mode='Markdown'
         )
-        logger.info("Вечернее напоминание отправлено")
+        logger.info("Вечернее напоминание отправлено (21:00 МСК = 17:00 NSK)")
     except Exception as e:
         logger.error(f"Ошибка отправки вечернего напоминания: {e}")
-    finally:
-        await app.shutdown()
 
-def setup_scheduler(application: Application):
-    """Настраивает расписание задач."""
-    scheduler = AsyncIOScheduler(timezone=pytz.timezone(TIMEZONE))
+async def send_night_check(context: ContextTypes.DEFAULT_TYPE):
+    """Проверка в 23:59 МСК = 19:59 NSK и троллинг тех, кто не отчитался."""
+    # Эта функция будет позже, пока заглушка
+    logger.info("Ночная проверка (23:59 МСК = 19:59 NSK)")
+
+# ---------- ТЕСТОВАЯ ФУНКЦИЯ (можно удалить после проверки) ----------
+async def test_schedule(context: ContextTypes.DEFAULT_TYPE):
+    """Тестовая функция - отправляет сообщение через 1 минуту после перезапуска."""
+    try:
+        await context.bot.send_message(
+            chat_id=FORUM_CHAT_ID,
+            message_thread_id=RATING_TOPIC_ID,
+            text="🧪 *ТЕСТ РАСПИСАНИЯ*: Бот жив и расписание работает! 🐺",
+            parse_mode='Markdown'
+        )
+        logger.info("Тестовое сообщение расписания отправлено")
+    except Exception as e:
+        logger.error(f"Ошибка тестового сообщения: {e}")
+
+def setup_job_queue(application: Application):
+    """Настраивает планировщик задач."""
+    job_queue = application.job_queue
     
-    # 8:00 - утреннее сообщение
-    scheduler.add_job(send_morning_message, CronTrigger(hour=8, minute=0))
+    # Сервер в Новосибирске (UTC+7), Москва (UTC+3) = разница -4 часа
+    # 8:00 МСК = 4:00 NSK
+    job_queue.run_daily(send_morning_message, time=time(hour=4, minute=0, second=0))
     
-    # 10:00 - рейтинг
-    scheduler.add_job(send_rating, CronTrigger(hour=10, minute=0))
+    # 10:00 МСК = 6:00 NSK
+    job_queue.run_daily(send_rating, time=time(hour=6, minute=0, second=0))
     
-    # 21:00 - вечернее напоминание
-    scheduler.add_job(send_evening_reminder, CronTrigger(hour=21, minute=0))
+    # 21:00 МСК = 17:00 NSK
+    job_queue.run_daily(send_evening_reminder, time=time(hour=17, minute=0, second=0))
     
-    scheduler.start()
-    logger.info("Планировщик запущен")
-    return scheduler
+    # 23:59 МСК = 19:59 NSK
+    job_queue.run_daily(send_night_check, time=time(hour=19, minute=59, second=0))
+    
+    # ТЕСТ: отправит сообщение через 1 минуту после перезапуска (закомментировать после проверки)
+    job_queue.run_once(test_schedule, when=60)
+    
+    logger.info("Планировщик задач настроен (время сервера NSK UTC+7)")
 
 # ---------- ОСНОВНАЯ ФУНКЦИЯ ----------
 def main():
@@ -294,7 +305,7 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_report))
     
     # Настраиваем расписание
-    scheduler = setup_scheduler(application)
+    setup_job_queue(application)
     
     # Запускаем
     webhook_host = os.environ.get('BOTHOST_HOST', '')
