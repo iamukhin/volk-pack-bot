@@ -33,16 +33,19 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Бёрпи: 50\n"
         "• Подтягивания: 30\n\n"
         "⚠️ Упражнения *не суммируются*! По каждому своя норма.\n\n"
-        "❄️ *Система заморозки:*\n"
-        "• 1 день заморозки = 100 очков\n"
-        "• Купить: `/buy_freeze`\n"
+        "🎰 *КАЗИНО (1 раз в день):*\n"
+        "• 30% шанс: +1 заморозка ❄️\n"
+        "• 70% шанс: завтра делать в 2x размере ⚠️\n"
+        "• Команда: `/casino`\n\n"
+        "❄️ *СИСТЕМА ЗАМОРОЗКИ:*\n"
+        "• Купить за 100 очков: `/buy_freeze`\n"
+        "• Купить за 500 руб: перевод на 89603431267\n"
         "• Использовать: `/freeze`\n\n"
         "🐺 *Для списка всех команд напиши:* `/commands`"
     )
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Простая команда со списком всех команд."""
     commands_text = (
         "📜 *ВСЕ КОМАНДЫ БОТА*\n\n"
         
@@ -51,22 +54,35 @@ async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/help` — Правила и как отчитываться\n"
         "• `/commands` — Этот список команд\n"
         "• `/stats` — Твоя статистика\n"
-        "• `/buy_freeze` — Купить 1 день заморозки (100 очков)\n"
+        "• `/casino` — Испытать удачу (1 раз в день) 🎰\n"
+        "• `/buy_freeze` — Купить заморозку за 100 очков\n"
         "• `/freeze` — Использовать день заморозки\n\n"
         
-        "🛠️ *ДЛЯ АДМИНИСТРАТОРОВ:*\n"
-        "• `/add_user @username Имя Прозвище 123` — Добавить участника\n"
+        "🛠️ *ДЛЯ АДМИНИСТРАТОРОВ (Яша):*\n"
+        "• `/add_user @юзер Имя Прозвище 123` — Добавить участника\n"
         "• `/show_users` — Список всех участников\n"
+        "• `/add_points поиск 100` — Начислить очки\n"
+        "• `/add_streak поиск 7` — Начислить дни серии\n"
+        "• `/add_freeze поиск 3` — Начислить заморозку\n"
+        "• `/add_money 500` — Добавить деньги в банк\n"
+        "• `/bank` — Показать общий банк\n"
         "• `/reset_today` — Сбросить сегодняшние отчёты\n"
         "• `/reset_all` — Полный сброс всей статистики\n\n"
         
+        "💰 *ОБЩИЙ БАНК:*\n"
+        f"• Перевод для заморозки: *89603431267*\n"
+        "• 1 заморозка = 500 рублей\n"
+        "• Все переводы идут в общий банк\n"
+        "• Через 200 дней разделим банк между победителями!\n\n"
+        
         "📅 *АВТОМАТИЧЕСКИЕ СООБЩЕНИЯ:*\n"
         "• 08:00 — Утреннее приветствие\n"
-        "• 10:00 — Рейтинг за вчера\n"
+        "• 10:00 — Рейтинг + банк\n"
         "• 12:00 — Факт дня\n"
         "• 21:00 — Вечернее напоминание\n"
         "• 23:59 — Проверка, кто не отчитался\n"
-        "• 09:00 — Напоминание о фото (каждые 25 дней)\n\n"
+        "• 09:00 — Напоминание о фото (каждые 25 дней)\n"
+        "• 00:05 — Сброс казино на новый день\n\n"
         
         "📝 *КАК ОТЧИТЫВАТЬСЯ:*\n"
         "Просто напиши в своей теме:\n"
@@ -120,14 +136,14 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Вы не зарегистрированы. Обратитесь к админу.")
         return
     
-    name, nickname, streak, points, freeze_days, last_photo_date = user
+    name, nickname, streak, points, freeze_days, _ = user
     response = (
         f"📊 *Статистика {name} ({nickname})*\n"
         f"🔥 Серия дней: {streak}\n"
         f"🏆 Всего очков: {points}\n"
         f"❄️ Дней заморозки: {freeze_days}\n"
         f"💰 Купить заморозку: /buy_freeze (100 очков)\n"
-        f"🐺 Крепись, братишка!"
+        f"🐺 Крепись, чел, сил тебе!"
     )
     await update.message.reply_text(response, parse_mode='Markdown')
 
@@ -161,7 +177,7 @@ async def freeze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❄️ *День заморозки использован!*\n"
             f"• Серия сохранена: {streak} → {streak + 1} дней\n"
             f"• Осталось дней заморозки: {freeze_days - 1}\n"
-            f"• Отдыхай, завтра снова в бой! 🐺",
+            f"• Отдыхай(пока можешь), завтра снова в бой! 🐺",
             parse_mode='Markdown'
         )
     else:
@@ -185,10 +201,10 @@ async def buy_freeze_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     if points < FREEZE_COST:
         await update.message.reply_text(
-            f"❌ *Недостаточно очков!*\n"
+            f"❌ *Шо ты маленький, недостаточно очков!*\n"
             f"Нужно: {FREEZE_COST} очков\n"
             f"У вас: {points} очков\n\n"
-            f"Копи ещё, братишка! 💪",
+            f"Иди херани соточку отжиманий и заработай дополнительные очки! 💪",
             parse_mode='Markdown'
         )
         return
@@ -206,6 +222,263 @@ async def buy_freeze_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
     else:
         await update.message.reply_text("❌ Ошибка при покупке заморозки.")
+
+async def casino_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Желаешь разбогатеть?? - 30% шанс выиграть заморозку."""
+    if not update.message or not update.message.message_thread_id:
+        await update.message.reply_text("Эта команда работает только в личных темах.")
+        return
+    
+    topic_id = update.message.message_thread_id
+    user = database.get_user_by_topic(topic_id)
+    
+    if not user:
+        await update.message.reply_text("❌ Вы не зарегистрированы.")
+        return
+    
+    name, nickname, streak, points, freeze_days, _ = user
+    
+    if not database.can_use_casino(topic_id):
+        await update.message.reply_text(
+            "🎰 *Ты уже крутил сегодня казик, ты тоже не ахуевай давай!*\n"
+            "Возвращайся завтра, удача (не)ждёт! 🐺",
+            parse_mode='Markdown'
+        )
+        return
+    
+    won = random.random() < 0.3
+    
+    if won:
+        database.use_casino(topic_id, won=True)
+        await update.message.reply_text(
+            "🎉 *ДЖЕКПОТ, КАБАН!*\n\n"
+            "⭐️ *Ты ВЫИГРАЛ!* ⭐️\n"
+            "🎁 +1 день заморозки добавлен!\n\n"
+            f"Теперь у тебя заморозок: {freeze_days + 1}\n"
+            "Использовать: `/freeze`\n\n"
+            "Ты думаешь, что умный? Да у моей козы мозги лучше, и она ест говно!",
+            parse_mode='Markdown'
+        )
+    else:
+        database.use_casino(topic_id, won=False)
+        await update.message.reply_text(
+            "💀 *Ты не справился? Ну конечно! Ты же не как я — ты как Кайл: всё время ноешь, жалуешься и считаешь, сколько денег у других!...*\n\n"
+            "☠️ *Ты ПРОИГРАЛ!* ☠️\n"
+            "⚠️ *Завтра все упражнения в ДВОЙНОМ размере!*\n\n"
+            "• Отжимания: 200 вместо 100\n"
+            "• Приседания: 200 вместо 100\n"
+            "• Пресс: 100 вместо 50\n"
+            "• Бёрпи: 100 вместо 50\n"
+            "• Подтягивания: 60 вместо 30\n\n"
+            "Удачи завтра, братишка! 💪",
+            parse_mode='Markdown'
+        )
+
+async def add_points_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Админ добавляет очки участнику."""
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Только админы могут начислять очки.")
+        return
+    
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "Формат: /add_points поиск кол-во_очков\n"
+            "Поиск: имя, прозвище или ID темы\n"
+            "Пример: /add_points Яша 100\n"
+            "Пример: /add_points 14 50 (где 14 - ID темы)"
+        )
+        return
+    
+    search = context.args[0]
+    try:
+        points = int(context.args[1])
+    except ValueError:
+        await update.message.reply_text("❌ Количество очков должно быть числом.")
+        return
+    
+    users = database.get_user_by_name_or_nickname(search)
+    
+    if not users:
+        await update.message.reply_text(f"❌ Пользователь '{search}' не найден.")
+        return
+    
+    if len(users) > 1:
+        text = "📋 *Найдено несколько пользователей:*\n\n"
+        for topic_id, name, nickname in users:
+            text += f"• {name} ({nickname}) - ID темы: `{topic_id}`\n"
+        text += "\n⚠️ Уточни поиск или используй ID темы."
+        await update.message.reply_text(text, parse_mode='Markdown')
+        return
+    
+    topic_id, name, nickname = users[0]
+    success = database.admin_add_points(topic_id, points)
+    
+    if success:
+        await update.message.reply_text(
+            f"✅ *Очки начислены!*\n"
+            f"• Участник: {name} ({nickname})\n"
+            f"• Добавлено: {points} очков\n"
+            f"• ID темы: `{topic_id}`",
+            parse_mode='Markdown'
+        )
+    else:
+        await update.message.reply_text("❌ Ошибка при начислении очков.")
+
+async def add_streak_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Админ добавляет дни серии."""
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Только админы могут начислять серию.")
+        return
+    
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "Формат: /add_streak поиск кол-во_дней\n"
+            "Пример: /add_streak Яша 7"
+        )
+        return
+    
+    search = context.args[0]
+    try:
+        days = int(context.args[1])
+    except ValueError:
+        await update.message.reply_text("❌ Количество дней должно быть числом.")
+        return
+    
+    users = database.get_user_by_name_or_nickname(search)
+    
+    if not users:
+        await update.message.reply_text(f"❌ Пользователь '{search}' не найден.")
+        return
+    
+    if len(users) > 1:
+        text = "📋 *Найдено несколько пользователей:*\n\n"
+        for topic_id, name, nickname in users:
+            text += f"• {name} ({nickname}) - ID темы: `{topic_id}`\n"
+        text += "\n⚠️ Уточни поиск или используй ID темы."
+        await update.message.reply_text(text, parse_mode='Markdown')
+        return
+    
+    topic_id, name, nickname = users[0]
+    success = database.admin_add_streak(topic_id, days)
+    
+    if success:
+        await update.message.reply_text(
+            f"✅ *Дни серии начислены!*\n"
+            f"• Участник: {name} ({nickname})\n"
+            f"• Добавлено: {days} дней\n"
+            f"• ID темы: `{topic_id}`",
+            parse_mode='Markdown'
+        )
+    else:
+        await update.message.reply_text("❌ Ошибка при начислении серии.")
+
+async def add_freeze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Админ добавляет дни заморозки."""
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Только админы могут начислять заморозку.")
+        return
+    
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "Формат: /add_freeze поиск кол-во_дней\n"
+            "Пример: /add_freeze Яша 3"
+        )
+        return
+    
+    search = context.args[0]
+    try:
+        days = int(context.args[1])
+    except ValueError:
+        await update.message.reply_text("❌ Количество дней должно быть числом.")
+        return
+    
+    users = database.get_user_by_name_or_nickname(search)
+    
+    if not users:
+        await update.message.reply_text(f"❌ Пользователь '{search}' не найден.")
+        return
+    
+    if len(users) > 1:
+        text = "📋 *Найдено несколько пользователей:*\n\n"
+        for topic_id, name, nickname in users:
+            text += f"• {name} ({nickname}) - ID темы: `{topic_id}`\n"
+        text += "\n⚠️ Уточни поиск или используй ID темы."
+        await update.message.reply_text(text, parse_mode='Markdown')
+        return
+    
+    topic_id, name, nickname = users[0]
+    success = database.admin_add_freeze(topic_id, days)
+    
+    if success:
+        await update.message.reply_text(
+            f"✅ *Дни заморозки начислены!*\n"
+            f"• Участник: {name} ({nickname})\n"
+            f"• Добавлено: {days} дней заморозки\n"
+            f"• ID темы: `{topic_id}`",
+            parse_mode='Markdown'
+        )
+    else:
+        await update.message.reply_text("❌ Ошибка при начислении заморозки.")
+
+async def add_money_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Админ добавляет деньги в общий банк."""
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Только админы могут добавлять деньги в банк.")
+        return
+    
+    if len(context.args) < 1:
+        await update.message.reply_text(
+            "Формат: /add_money сумма\n"
+            "Пример: /add_money 500 (за 1 заморозку)\n\n"
+            "💡 *Перевод для заморозки:*\n"
+            "1. Участник переводит 500 руб на 89603431267\n"
+            "2. Присылает скрин Яше\n"
+            "3. Яша начисляет заморозку: /add_freeze\n"
+            "4. Яша добавляет деньги в банк: /add_money 500"
+        )
+        return
+    
+    try:
+        amount = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ Сумма должна быть числом.")
+        return
+    
+    success = database.add_bank_money(amount)
+    
+    if success:
+        total = database.get_bank_total()
+        await update.message.reply_text(
+            f"💰 *Деньги добавлены в банк!*\n"
+            f"• Добавлено: {amount} руб.\n"
+            f"• Теперь в банке: {total} руб.\n\n"
+            f"📞 *Реквизиты для перевода:*\n"
+            f"`89603431267`\n\n"
+            f"🐺 *Общий банк растёт!*",
+            parse_mode='Markdown'
+        )
+    else:
+        await update.message.reply_text("❌ Ошибка при добавлении денег в банк.")
+
+async def bank_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает общий банк."""
+    total = database.get_bank_total()
+    
+    await update.message.reply_text(
+        f"🏦 *ОБЩИЙ БАНК ЧЕЛЛЕНДЖА*\n\n"
+        f"💰 *Сумма:* {total} рублей\n"
+        f"📅 *Челлендж:* 200 дней\n"
+        f"👥 *Участников:* {len(database.get_all_users())}\n\n"
+        f"💳 *Для пополнения:*\n"
+        f"Перевод на `89603431267`\n"
+        f"1 заморозка = 500 рублей\n\n"
+        f"🎯 *По итогам 200 дней* банк будет разделён между победителями! 🐺",
+        parse_mode='Markdown'
+    )
 
 async def reset_all_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сбросить всю статистику - только для админов."""
@@ -293,14 +566,17 @@ def parse_report(text: str):
     
     return result
 
-def calculate_points(exercises_dict):
+def calculate_points(exercises_dict, is_double=False):
     total_points = 0
     day_completed = True
     failed_exercises = []
     
+    multiplier = 2 if is_double else 1
+    
     for exercise, count in exercises_dict.items():
         if exercise in EXERCISES:
             points_per_rep, minimum = EXERCISES[exercise]
+            minimum *= multiplier
             points = count * points_per_rep
             
             if count >= minimum:
@@ -325,25 +601,43 @@ async def handle_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not exercises:
         return
     
-    points, day_completed, failed = calculate_points(exercises)
+    is_double = database.check_double_next_day(topic_id)
+    points, day_completed, failed = calculate_points(exercises, is_double)
     
     database.save_daily_stats(topic_id, exercises, points, day_completed)
     
+    if day_completed and is_double:
+        database.reset_double_next_day(topic_id)
+    
     if day_completed:
-        praise = [
-            "🔥 Отлично, братишка! День засчитан!",
-            "🐺 Стая гордится тобой! Так держать!",
-            "💪 Мощно! Очки твои, серия растёт!",
-            "🏔️ Царь горы! Продолжай в том же духе!",
-            "🎯 В яблочко! Ты сегодня - анаконда!"
-        ]
+        if is_double:
+            praise = [
+                "🔥 ТЫ СПРАВИЛСЯ С 2x НОРМОЙ! Ты - машина!",
+                "💪 ДВОЙНАЯ НОРМА выполнена! Ты сегодня - ТИТАН!",
+                "🐺 2x размер? Не проблема для настоящего волка!",
+                "🏔️ Ты покорил двойную вершину! Легенда стаи!"
+            ]
+        else:
+            praise = [
+                "🔥 Отлично, братишка! День засчитан!",
+                "🐺 Стая гордится тобой! Так держать!",
+                "💪 Мощно! Очки твои, серия растёт!",
+                "🏔️ Царь горы! Продолжай в том же духе!"
+            ]
+        
         response = f"✅ *Отчёт принят!*\n"
+        if is_double:
+            response += "⚠️ *Выполнено в 2x размере!*\n"
+        
         for ex, count in exercises.items():
             response += f"• {ex}: {count}\n"
         response += f"\n🎯 *Очки за день:* {points:.1f}\n"
         response += f"📈 *{random.choice(praise)}*"
     else:
         response = f"⚠️ *Есть недобор!*\n"
+        if is_double:
+            response += "⚠️ *Сегодня нужно было в 2x размере!*\n"
+        
         for ex, count, minimum in failed:
             response += f"• {ex}: {count} из {minimum}\n"
         response += "\n📢 *Дополни до минимума до 23:59!*"
@@ -398,8 +692,9 @@ async def send_fact(context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Ошибка отправки факта: {e}")
 
 async def send_rating(context: ContextTypes.DEFAULT_TYPE):
-    """Рейтинг в 10:00 МСК = 6:00 NSK."""
+    """Рейтинг в 10:00 МСК = 6:00 NSK с банком."""
     rating = database.get_today_rating()
+    bank_total = database.get_bank_total()
     
     if not rating:
         text = "📊 *Рейтинг за сегодня*\n\nПока никто не отчитался. Стая, вы где? 🐺"
@@ -422,6 +717,11 @@ async def send_rating(context: ContextTypes.DEFAULT_TYPE):
                 text += "\n"
             else:
                 text += "   Ещё не отчитался\n"
+    
+    text += f"\n🏦 *ОБЩИЙ БАНК:* {bank_total} руб.\n"
+    text += "💳 *Для пополнения:* `89603431267`\n"
+    text += "❄️ 1 заморозка = 500 руб.\n\n"
+    text += "🐺 *200 дней до победы!*"
     
     try:
         await context.bot.send_message(
@@ -484,6 +784,14 @@ async def send_photo_reminder(context: ContextTypes.DEFAULT_TYPE):
                 logger.info(f"Напоминание о фото отправлено {name} (серия: {streak} дней)")
             except Exception as e:
                 logger.error(f"Ошибка отправки напоминания о фото {name}: {e}")
+
+async def reset_casino_daily(context: ContextTypes.DEFAULT_TYPE):
+    """Сбрасывает флаги казино для всех пользователей (00:05)."""
+    success = database.reset_casino_daily()
+    if success:
+        logger.info("Казино сброшено на новый день")
+    else:
+        logger.error("Ошибка сброса казино")
 
 async def send_night_check(context: ContextTypes.DEFAULT_TYPE):
     """Ночная проверка в 23:59 МСК = 19:59 NSK."""
@@ -604,6 +912,9 @@ def setup_job_queue(application: Application):
     # 9:00 МСК = 5:00 NSK - фото-напоминания
     job_queue.run_daily(send_photo_reminder, time=time(hour=5, minute=0, second=0))
     
+    # 00:05 МСК = 20:05 NSK (предыдущего дня) - сброс казино
+    job_queue.run_daily(reset_casino_daily, time=time(hour=20, minute=5, second=0))
+    
     logger.info("Планировщик задач настроен (время сервера NSK UTC+7)")
 
 # ---------- ОСНОВНАЯ ФУНКЦИЯ ----------
@@ -613,11 +924,19 @@ def main():
     # Обработчики команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("commands", commands_command))  # НОВАЯ КОМАНДА
+    application.add_handler(CommandHandler("commands", commands_command))
     application.add_handler(CommandHandler("add_user", add_user_command))
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("freeze", freeze_command))
     application.add_handler(CommandHandler("buy_freeze", buy_freeze_command))
+    application.add_handler(CommandHandler("casino", casino_command))
+    
+    # Админские команды
+    application.add_handler(CommandHandler("add_points", add_points_command))
+    application.add_handler(CommandHandler("add_streak", add_streak_command))
+    application.add_handler(CommandHandler("add_freeze", add_freeze_command))
+    application.add_handler(CommandHandler("add_money", add_money_command))
+    application.add_handler(CommandHandler("bank", bank_command))
     application.add_handler(CommandHandler("reset_all", reset_all_command))
     application.add_handler(CommandHandler("reset_today", reset_today_command))
     application.add_handler(CommandHandler("show_users", show_users_command))
