@@ -9,7 +9,7 @@ def init_db():
     conn = sqlite3.connect('volk_bot.db')
     cursor = conn.cursor()
     
-    # Таблица пользователей (ДОБАВЛЕНО freeze_days)
+    # Таблица пользователей
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -20,6 +20,7 @@ def init_db():
             current_streak INTEGER DEFAULT 0,
             total_points INTEGER DEFAULT 0,
             freeze_days INTEGER DEFAULT 0,
+            last_photo_reminder_date DATE,
             is_active BOOLEAN DEFAULT 1
         )
     ''')
@@ -98,7 +99,7 @@ def save_daily_stats(user_topic_id, exercises_dict, points, day_completed):
             exercises_dict.get('отжимания', 0),
             exercises_dict.get('приседания', 0),
             exercises_dict.get('пресс', 0),
-            exercises_dict.get('берпи', 0),  # ТОЛЬКО берпи, без сложения
+            exercises_dict.get('берпи', 0),
             exercises_dict.get('подтягивания', 0),
             points,
             1 if day_completed else 0
@@ -150,7 +151,7 @@ def get_user_by_topic(topic_id):
     cursor = conn.cursor()
     
     cursor.execute('''
-        SELECT name, nickname, current_streak, total_points, freeze_days
+        SELECT name, nickname, current_streak, total_points, freeze_days, last_photo_reminder_date
         FROM users WHERE topic_id = ?
     ''', (topic_id,))
     
@@ -174,7 +175,6 @@ def use_freeze_day(user_topic_id):
         conn.commit()
         success = cursor.rowcount > 0
         
-        # Создаём запись в daily_stats о использовании заморозки
         if success:
             cursor.execute('SELECT id FROM users WHERE topic_id = ?', (user_topic_id,))
             user = cursor.fetchone()
@@ -202,14 +202,12 @@ def buy_freeze_day(user_topic_id, cost_points):
     cursor = conn.cursor()
     
     try:
-        # Проверяем, хватает ли очков
         cursor.execute('SELECT total_points FROM users WHERE topic_id = ?', (user_topic_id,))
         user = cursor.fetchone()
         
         if not user or user[0] < cost_points:
             return False
         
-        # Списываем очки и добавляем день заморозки
         cursor.execute('''
             UPDATE users 
             SET total_points = total_points - ?,
@@ -274,6 +272,49 @@ def reset_today_stats():
         return False
     finally:
         conn.close()
+
+def check_photo_reminder_needed(user_topic_id):
+    """Проверяет, нужно ли отправлять напоминание о фото (каждые 25 дней)."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT last_photo_reminder_date, current_streak 
+        FROM users WHERE topic_id = ?
+    ''', (user_topic_id,))
+    
+    result = cursor.fetchone()
+    conn.close()
+    
+    if not result:
+        return False
+    
+    last_date, streak = result
+    
+    if last_date is None:
+        return streak >= 25
+    else:
+        from datetime import datetime
+        last_date_obj = datetime.strptime(last_date, '%Y-%m-%d').date()
+        days_passed = (datetime.now().date() - last_date_obj).days
+        return days_passed >= 25 and streak >= 25
+
+def update_photo_reminder_date(user_topic_id):
+    """Обновляет дату последнего напоминания о фото."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    today = datetime.now().date()
+    
+    cursor.execute('''
+        UPDATE users 
+        SET last_photo_reminder_date = ?
+        WHERE topic_id = ?
+    ''', (today, user_topic_id))
+    
+    conn.commit()
+    conn.close()
+    return True
 
 if __name__ == '__main__':
     init_db()
