@@ -191,6 +191,29 @@ async def send_morning_message(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Ошибка отправки утреннего сообщения: {e}")
 
+async def send_fact(context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет факт в 12:00 МСК = 8:00 NSK."""
+    facts = [
+        "💡 Факт: 20 отжиманий сжигают примерно 10 калорий. 100 отжиманий = 50 калорий = 1 яблоко!",
+        "🐺 Факт: Волки в стае могут пробежать до 200 км за сутки. А ты сколько приседаний сделаешь?",
+        "💪 Факт: Мышцы начинают 'гореть' из-за молочной кислоты. Это знак роста!",
+        "🏔️ Факт: Самая длинная серия отжиманий — 10,507 раз за 24 часа. Но мы скромнее — 100 в день!",
+        "🔥 Факт: После тренировки метаболзм остаётся повышенным до 48 часов. Качаешься даже во сне!"
+    ]
+    
+    fact = random.choice(facts)
+    
+    try:
+        await context.bot.send_message(
+            chat_id=FORUM_CHAT_ID,
+            message_thread_id=RATING_TOPIC_ID,
+            text=f"*📚 ФАКТ ДНЯ*\n\n{fact}",
+            parse_mode='Markdown'
+        )
+        logger.info("Факт отправлен (12:00 МСК = 8:00 NSK)")
+    except Exception as e:
+        logger.error(f"Ошибка отправки факта: {e}")
+
 async def send_rating(context: ContextTypes.DEFAULT_TYPE):
     """Отправляет рейтинг в 10:00 МСК = 6:00 NSK."""
     rating = database.get_today_rating()
@@ -252,42 +275,107 @@ async def send_evening_reminder(context: ContextTypes.DEFAULT_TYPE):
 
 async def send_night_check(context: ContextTypes.DEFAULT_TYPE):
     """Проверка в 23:59 МСК = 19:59 NSK и троллинг тех, кто не отчитался."""
-    # Эта функция будет позже, пока заглушка
-    logger.info("Ночная проверка (23:59 МСК = 19:59 NSK)")
-
-# ---------- ТЕСТОВАЯ ФУНКЦИЯ (можно удалить после проверки) ----------
-async def test_schedule(context: ContextTypes.DEFAULT_TYPE):
-    """Тестовая функция - отправляет сообщение через 1 минуту после перезапуска."""
+    from datetime import date
+    
+    conn = database.sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    today = date.today()
+    
+    # Находим всех активных пользователей
+    cursor.execute('''
+        SELECT u.topic_id, u.name, u.nickname, u.current_streak, 
+               COALESCE(ds.day_completed, 0) as completed
+        FROM users u
+        LEFT JOIN daily_stats ds ON u.id = ds.user_id AND ds.date = ?
+        WHERE u.is_active = 1
+    ''', (today,))
+    
+    users = cursor.fetchall()
+    conn.close()
+    
+    troll_messages = [
+        "💀 {name} {nickname}! Стая не прощает слабину! Серия из {streak} дней сгорела!",
+        "🐺 Эх, {name}... Волк должен быть голодным каждый день! {streak} дней в помойке!",
+        "🏔️ {name} {nickname} сорвался с горы! {streak} дней полетели в тартары!",
+        "🔥 Пламя погасло! {name} не отчитался! {streak}-дневная серия уничтожена!"
+    ]
+    
+    no_fails_message = "🎉 *Стая в полном составе!* Все львы отчитались сегодня! 🦁"
+    
+    fails_exist = False
+    fail_text = "🪦 *КОГО СТАЯ ПОТЕРЯЛА*\n\n"
+    
+    for topic_id, name, nickname, streak, completed in users:
+        if not completed:  # Не отчитался
+            fails_exist = True
+            # Сбрасываем серию в БД
+            database.sqlite3.connect('volk_bot.db').execute(
+                'UPDATE users SET current_streak = 0 WHERE topic_id = ?',
+                (topic_id,)
+            ).connection.commit()
+            
+            # Формируем сообщение троллинга
+            troll_msg = random.choice(troll_messages).format(
+                name=name, nickname=nickname, streak=streak
+            )
+            fail_text += f"• {troll_msg}\n"
+            
+            # Отправляем троллинг в личную тему
+            try:
+                app = Application.builder().token(BOT_TOKEN).build()
+                await app.bot.send_message(
+                    chat_id=FORUM_CHAT_ID,
+                    message_thread_id=topic_id,
+                    text=f"*{troll_msg}*\n\nЗавтра исправляйся! 💪",
+                    parse_mode='Markdown'
+                )
+                await app.shutdown()
+                logger.info(f"Троллинг отправлен {name} в тему {topic_id}")
+            except Exception as e:
+                logger.error(f"Ошибка отправки троллинга {name}: {e}")
+    
+    # Отправляем итог в общую тему
     try:
-        await context.bot.send_message(
-            chat_id=FORUM_CHAT_ID,
-            message_thread_id=RATING_TOPIC_ID,
-            text="🧪 *ТЕСТ РАСПИСАНИЯ*: Бот жив и расписание работает! 🐺",
-            parse_mode='Markdown'
-        )
-        logger.info("Тестовое сообщение расписания отправлено")
+        app = Application.builder().token(BOT_TOKEN).build()
+        if fails_exist:
+            await app.bot.send_message(
+                chat_id=FORUM_CHAT_ID,
+                message_thread_id=RATING_TOPIC_ID,
+                text=fail_text,
+                parse_mode='Markdown'
+            )
+        else:
+            await app.bot.send_message(
+                chat_id=FORUM_CHAT_ID,
+                message_thread_id=RATING_TOPIC_ID,
+                text=no_fails_message,
+                parse_mode='Markdown'
+            )
+        await app.shutdown()
+        logger.info("Ночная проверка завершена")
     except Exception as e:
-        logger.error(f"Ошибка тестового сообщения: {e}")
+        logger.error(f"Ошибка ночной проверки: {e}")
 
 def setup_job_queue(application: Application):
     """Настраивает планировщик задач."""
     job_queue = application.job_queue
     
     # Сервер в Новосибирске (UTC+7), Москва (UTC+3) = разница -4 часа
-    # 8:00 МСК = 4:00 NSK
+    # 8:00 МСК = 4:00 NSK - утро
     job_queue.run_daily(send_morning_message, time=time(hour=4, minute=0, second=0))
     
-    # 10:00 МСК = 6:00 NSK
+    # 10:00 МСК = 6:00 NSK - рейтинг
     job_queue.run_daily(send_rating, time=time(hour=6, minute=0, second=0))
     
-    # 21:00 МСК = 17:00 NSK
+    # 12:00 МСК = 8:00 NSK - факт
+    job_queue.run_daily(send_fact, time=time(hour=8, minute=0, second=0))
+    
+    # 21:00 МСК = 17:00 NSK - вечер
     job_queue.run_daily(send_evening_reminder, time=time(hour=17, minute=0, second=0))
     
-    # 23:59 МСК = 19:59 NSK
+    # 23:59 МСК = 19:59 NSK - ночная проверка
     job_queue.run_daily(send_night_check, time=time(hour=19, minute=59, second=0))
-    
-    # ТЕСТ: отправит сообщение через 1 минуту после перезапуска (закомментировать после проверки)
-    job_queue.run_once(test_schedule, when=60)
     
     logger.info("Планировщик задач настроен (время сервера NSK UTC+7)")
 
