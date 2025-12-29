@@ -37,11 +37,46 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• 1 день заморозки = 100 очков\n"
         "• Купить: `/buy_freeze`\n"
         "• Использовать: `/freeze`\n\n"
-        "📊 *Другие команды:*\n"
-        "• `/stats` — твоя статистика\n"
-        "• `/show_users` — список участников (админы)"
+        "🐺 *Для списка всех команд напиши:* `/commands`"
     )
     await update.message.reply_text(help_text, parse_mode='Markdown')
+
+async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Простая команда со списком всех команд."""
+    commands_text = (
+        "📜 *ВСЕ КОМАНДЫ БОТА*\n\n"
+        
+        "👤 *ДЛЯ ВСЕХ УЧАСТНИКОВ:*\n"
+        "• `/start` — Запустить бота\n"
+        "• `/help` — Правила и как отчитываться\n"
+        "• `/commands` — Этот список команд\n"
+        "• `/stats` — Твоя статистика\n"
+        "• `/buy_freeze` — Купить 1 день заморозки (100 очков)\n"
+        "• `/freeze` — Использовать день заморозки\n\n"
+        
+        "🛠️ *ДЛЯ АДМИНИСТРАТОРОВ:*\n"
+        "• `/add_user @username Имя Прозвище 123` — Добавить участника\n"
+        "• `/show_users` — Список всех участников\n"
+        "• `/reset_today` — Сбросить сегодняшние отчёты\n"
+        "• `/reset_all` — Полный сброс всей статистики\n\n"
+        
+        "📅 *АВТОМАТИЧЕСКИЕ СООБЩЕНИЯ:*\n"
+        "• 08:00 — Утреннее приветствие\n"
+        "• 10:00 — Рейтинг за вчера\n"
+        "• 12:00 — Факт дня\n"
+        "• 21:00 — Вечернее напоминание\n"
+        "• 23:59 — Проверка, кто не отчитался\n"
+        "• 09:00 — Напоминание о фото (каждые 25 дней)\n\n"
+        
+        "📝 *КАК ОТЧИТЫВАТЬСЯ:*\n"
+        "Просто напиши в своей теме:\n"
+        "`отжимания 120, приседания 100`\n"
+        "или\n"
+        "`берпи 60, пресс 50, подтягивания 30`\n\n"
+        
+        "🐺 *Удачи в челлендже, волчара!*"
+    )
+    await update.message.reply_text(commands_text, parse_mode='Markdown')
 
 async def add_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -65,7 +100,6 @@ async def add_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ topic_id должен быть числом.")
         return
     
-    # Используем topic_id как временный telegram_id
     success = database.add_user(topic_id, name, nickname, topic_id)
     
     if success:
@@ -86,7 +120,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Вы не зарегистрированы. Обратитесь к админу.")
         return
     
-    name, nickname, streak, points, freeze_days = user
+    name, nickname, streak, points, freeze_days, last_photo_date = user
     response = (
         f"📊 *Статистика {name} ({nickname})*\n"
         f"🔥 Серия дней: {streak}\n"
@@ -110,7 +144,7 @@ async def freeze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Вы не зарегистрированы.")
         return
     
-    name, nickname, streak, points, freeze_days = user
+    name, nickname, streak, points, freeze_days, _ = user
     
     if freeze_days <= 0:
         await update.message.reply_text(
@@ -120,7 +154,6 @@ async def freeze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Используем заморозку
     success = database.use_freeze_day(topic_id)
     
     if success:
@@ -135,7 +168,7 @@ async def freeze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ошибка при использовании заморозки.")
 
 async def buy_freeze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Купить день заморозки за очки (стоимость: 100 очков)."""
+    """Купить день заморозки за очки (100 очков)."""
     if not update.message or not update.message.message_thread_id:
         await update.message.reply_text("Эта команда работает только в личных темах.")
         return
@@ -147,8 +180,8 @@ async def buy_freeze_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ Вы не зарегистрированы.")
         return
     
-    name, nickname, streak, points, freeze_days = user
-    FREEZE_COST = 100  # Стоимость 1 дня заморозки
+    name, nickname, streak, points, freeze_days, _ = user
+    FREEZE_COST = 100
     
     if points < FREEZE_COST:
         await update.message.reply_text(
@@ -160,7 +193,6 @@ async def buy_freeze_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return
     
-    # Покупаем заморозку
     success = database.buy_freeze_day(topic_id, FREEZE_COST)
     
     if success:
@@ -176,7 +208,7 @@ async def buy_freeze_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ Ошибка при покупке заморозки.")
 
 async def reset_all_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Сбросить всю статистику (очки, серии) - только для админов."""
+    """Сбросить всю статистику - только для админов."""
     user_id = update.effective_user.id
     if user_id not in ADMIN_IDS:
         await update.message.reply_text("❌ Только админы могут сбрасывать статистику.")
@@ -222,7 +254,7 @@ async def reset_today_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("❌ Ошибка при сбросе.")
 
 async def show_users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показать всех зарегистрированных пользователей - только для админов."""
+    """Показать всех участников - только для админов."""
     user_id = update.effective_user.id
     if user_id not in ADMIN_IDS:
         await update.message.reply_text("❌ Только админы могут просматривать список.")
@@ -241,7 +273,7 @@ async def show_users_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     await update.message.reply_text(text, parse_mode='Markdown')
 
-# ---------- ПАРСИНГ И СОХРАНЕНИЕ ОТЧЁТОВ ----------
+# ---------- ПАРСИНГ ОТЧЁТОВ ----------
 def parse_report(text: str):
     text = text.lower().replace('день', '').replace(':', ' ').replace(',', ' ')
     
@@ -249,7 +281,7 @@ def parse_report(text: str):
         'отжимания': r'(?:отжимания|отжиманий|отжим)\s*(\d+)',
         'приседания': r'(?:приседания|приседаний|присед)\s*(\d+)',
         'пресс': r'(?:пресс|пресса)\s*(\d+)',
-        'берпи': r'(?:берпи|бёрпи)\s*(\d+)',  # ТОЛЬКО берпи, без бурпи!
+        'берпи': r'(?:берпи|бёрпи)\s*(\d+)',
         'подтягивания': r'(?:подтягивания|подтягиваний|подтяг)\s*(\d+)',
     }
     
@@ -295,10 +327,8 @@ async def handle_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     points, day_completed, failed = calculate_points(exercises)
     
-    # Сохраняем в БД
     database.save_daily_stats(topic_id, exercises, points, day_completed)
     
-    # Формируем ответ
     if day_completed:
         praise = [
             "🔥 Отлично, братишка! День засчитан!",
@@ -322,7 +352,7 @@ async def handle_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- РАСПИСАНИЕ ----------
 async def send_morning_message(context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет утреннее сообщение в 8:00 МСК = 4:00 NSK."""
+    """Утреннее сообщение в 8:00 МСК = 4:00 NSK."""
     morning_phrases = [
         "☀️ Доброе утро, стая! Просыпайтесь, львы! Сегодня день новых побед!",
         "🐺 Эй, волки! Солнце встало, пора показывать зубы! Кто сегодня король горы?",
@@ -344,7 +374,7 @@ async def send_morning_message(context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Ошибка отправки утреннего сообщения: {e}")
 
 async def send_fact(context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет факт в 12:00 МСК = 8:00 NSK."""
+    """Факт дня в 12:00 МСК = 8:00 NSK."""
     facts = [
         "💡 Факт: 20 отжиманий сжигают примерно 10 калорий. 100 отжиманий = 50 калорий = 1 яблоко!",
         "🐺 Факт: Волки в стае могут пробежать до 200 км за сутки. А ты сколько приседаний сделаешь?",
@@ -368,7 +398,7 @@ async def send_fact(context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Ошибка отправки факта: {e}")
 
 async def send_rating(context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет рейтинг в 10:00 МСК = 6:00 NSK."""
+    """Рейтинг в 10:00 МСК = 6:00 NSK."""
     rating = database.get_today_rating()
     
     if not rating:
@@ -405,7 +435,7 @@ async def send_rating(context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Ошибка отправки рейтинга: {e}")
 
 async def send_evening_reminder(context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет вечернее напоминание в 21:00 МСК = 17:00 NSK."""
+    """Вечернее напоминание в 21:00 МСК = 17:00 NSK."""
     evening_phrases = [
         "🌙 Эй, стая! Не забыли про тренировку? До 23:59 осталось мало времени!",
         "🐺 Вечер, братишки! Кто ещё не отчитался? Пора показывать результат!",
@@ -426,8 +456,37 @@ async def send_evening_reminder(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Ошибка отправки вечернего напоминания: {e}")
 
+async def send_photo_reminder(context: ContextTypes.DEFAULT_TYPE):
+    """Напоминание о фото каждые 25 дней в 9:00 МСК = 5:00 NSK."""
+    users = database.get_all_users()
+    
+    for name, nickname, topic_id, streak, points, freeze_days in users:
+        if streak >= 25 and database.check_photo_reminder_needed(topic_id):
+            reminder_text = (
+                "📸 *ВНИМАНИЕ, БРАТИШКА!*\n\n"
+                f"Твоя серия уже {streak} дней! 🎯\n"
+                "Пора зафиксировать прогресс!\n\n"
+                "📌 *Пришли 2 фотографии:*\n"
+                "1. Тело спереди\n"
+                "2. Тело сбоку\n\n"
+                "Это поможет увидеть изменения за 25 дней тренировок! 💪\n"
+                "Фотографии нужны для твоего же прогресса, брат! 🐺"
+            )
+            
+            try:
+                await context.bot.send_message(
+                    chat_id=FORUM_CHAT_ID,
+                    message_thread_id=topic_id,
+                    text=reminder_text,
+                    parse_mode='Markdown'
+                )
+                database.update_photo_reminder_date(topic_id)
+                logger.info(f"Напоминание о фото отправлено {name} (серия: {streak} дней)")
+            except Exception as e:
+                logger.error(f"Ошибка отправки напоминания о фото {name}: {e}")
+
 async def send_night_check(context: ContextTypes.DEFAULT_TYPE):
-    """Проверка в 23:59 МСК = 19:59 NSK и троллинг тех, кто не отчитался."""
+    """Ночная проверка в 23:59 МСК = 19:59 NSK."""
     from datetime import date
     
     conn = database.sqlite3.connect('volk_bot.db')
@@ -461,10 +520,9 @@ async def send_night_check(context: ContextTypes.DEFAULT_TYPE):
     fail_text = "🪦 *КОГО СТАЯ ПОТЕРЯЛА*\n\n"
     
     for topic_id, name, nickname, streak, freeze_days, completed in users:
-        if not completed:  # Не отчитался
+        if not completed:
             fails_exist = True
             
-            # Если есть заморозка, предлагаем использовать
             if freeze_days > 0:
                 try:
                     app = Application.builder().token(BOT_TOKEN).build()
@@ -478,20 +536,17 @@ async def send_night_check(context: ContextTypes.DEFAULT_TYPE):
                 except:
                     pass
             
-            # Сбрасываем серию в БД (если не использовал заморозку)
             database.sqlite3.connect('volk_bot.db').execute(
                 'UPDATE users SET current_streak = 0 WHERE topic_id = ?',
                 (topic_id,)
             ).connection.commit()
             
-            # Формируем сообщение троллинга
             if streak > 0:
                 troll_msg = random.choice(troll_messages).format(
                     name=name, nickname=nickname, streak=streak
                 )
                 fail_text += f"• {troll_msg}\n"
                 
-                # Отправляем троллинг в личную тему
                 try:
                     app = Application.builder().token(BOT_TOKEN).build()
                     await app.bot.send_message(
@@ -505,7 +560,6 @@ async def send_night_check(context: ContextTypes.DEFAULT_TYPE):
                 except Exception as e:
                     logger.error(f"Ошибка отправки троллинга {name}: {e}")
     
-    # Отправляем итог в общую тему
     try:
         app = Application.builder().token(BOT_TOKEN).build()
         if fails_exist:
@@ -547,6 +601,9 @@ def setup_job_queue(application: Application):
     # 23:59 МСК = 19:59 NSK - ночная проверка
     job_queue.run_daily(send_night_check, time=time(hour=19, minute=59, second=0))
     
+    # 9:00 МСК = 5:00 NSK - фото-напоминания
+    job_queue.run_daily(send_photo_reminder, time=time(hour=5, minute=0, second=0))
+    
     logger.info("Планировщик задач настроен (время сервера NSK UTC+7)")
 
 # ---------- ОСНОВНАЯ ФУНКЦИЯ ----------
@@ -556,6 +613,7 @@ def main():
     # Обработчики команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("commands", commands_command))  # НОВАЯ КОМАНДА
     application.add_handler(CommandHandler("add_user", add_user_command))
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("freeze", freeze_command))
