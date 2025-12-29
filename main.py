@@ -538,4 +538,55 @@ def setup_job_queue(application: Application):
     # 10:00 МСК = 6:00 NSK - рейтинг
     job_queue.run_daily(send_rating, time=time(hour=6, minute=0, second=0))
     
-    # 12:00 МСК = 8:00 NSK
+    # 12:00 МСК = 8:00 NSK - факт
+    job_queue.run_daily(send_fact, time=time(hour=8, minute=0, second=0))
+    
+    # 21:00 МСК = 17:00 NSK - вечер
+    job_queue.run_daily(send_evening_reminder, time=time(hour=17, minute=0, second=0))
+    
+    # 23:59 МСК = 19:59 NSK - ночная проверка
+    job_queue.run_daily(send_night_check, time=time(hour=19, minute=59, second=0))
+    
+    logger.info("Планировщик задач настроен (время сервера NSK UTC+7)")
+
+# ---------- ОСНОВНАЯ ФУНКЦИЯ ----------
+def main():
+    application = Application.builder().token(BOT_TOKEN).build()
+    
+    # Обработчики команд
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("add_user", add_user_command))
+    application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler("freeze", freeze_command))
+    application.add_handler(CommandHandler("buy_freeze", buy_freeze_command))
+    application.add_handler(CommandHandler("reset_all", reset_all_command))
+    application.add_handler(CommandHandler("reset_today", reset_today_command))
+    application.add_handler(CommandHandler("show_users", show_users_command))
+    
+    # Обработчик отчётов
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_report))
+    
+    # Настраиваем расписание
+    setup_job_queue(application)
+    
+    # Запускаем
+    webhook_host = os.environ.get('BOTHOST_HOST', '')
+    port = int(os.environ.get('PORT', 8080))
+    
+    if webhook_host:
+        webhook_url = f"https://{webhook_host}/{BOT_TOKEN}"
+        logger.info(f"Запуск с вебхуком: {webhook_url}")
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            url_path=BOT_TOKEN,
+            webhook_url=webhook_url,
+            drop_pending_updates=True
+        )
+    else:
+        logger.info("Запуск в режиме polling...")
+        application.run_polling(drop_pending_updates=True)
+
+if __name__ == '__main__':
+    main()
