@@ -21,6 +21,8 @@ def init_db():
             total_points INTEGER DEFAULT 0,
             freeze_days INTEGER DEFAULT 0,
             last_photo_reminder_date DATE,
+            casino_used_today BOOLEAN DEFAULT 0,
+            double_next_day BOOLEAN DEFAULT 0,
             is_active BOOLEAN DEFAULT 1
         )
     ''')
@@ -51,6 +53,18 @@ def init_db():
             media_path TEXT
         )
     ''')
+    
+    # Таблица общего банка
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS bank (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            total_money INTEGER DEFAULT 0,
+            last_update DATE
+        )
+    ''')
+    
+    cursor.execute('INSERT OR IGNORE INTO bank (total_money, last_update) VALUES (0, ?)', 
+                   (datetime.now().date(),))
     
     conn.commit()
     conn.close()
@@ -315,6 +329,172 @@ def update_photo_reminder_date(user_topic_id):
     conn.commit()
     conn.close()
     return True
+
+def can_use_casino(user_topic_id):
+    """Проверяет, может ли пользователь использовать казино сегодня."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT casino_used_today FROM users WHERE topic_id = ?', (user_topic_id,))
+    result = cursor.fetchone()
+    conn.close()
+    
+    return result and not result[0]
+
+def use_casino(user_topic_id, won):
+    """Отмечает использование казино и обновляет статус."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    try:
+        if won:
+            cursor.execute('''
+                UPDATE users 
+                SET casino_used_today = 1,
+                    freeze_days = freeze_days + 1
+                WHERE topic_id = ?
+            ''', (user_topic_id,))
+        else:
+            cursor.execute('''
+                UPDATE users 
+                SET casino_used_today = 1,
+                    double_next_day = 1
+                WHERE topic_id = ?
+            ''', (user_topic_id,))
+        
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка использования казино: {e}")
+        return False
+    finally:
+        conn.close()
+
+def reset_casino_daily():
+    """Сбрасывает флаги казино для всех пользователей (вызывать ежедневно)."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('UPDATE users SET casino_used_today = 0')
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка сброса казино: {e}")
+        return False
+    finally:
+        conn.close()
+
+def check_double_next_day(user_topic_id):
+    """Проверяет, нужно ли пользователю делать упражнения в 2x размере."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT double_next_day FROM users WHERE topic_id = ?', (user_topic_id,))
+    result = cursor.fetchone()
+    conn.close()
+    
+    return result and result[0]
+
+def reset_double_next_day(user_topic_id):
+    """Сбрасывает флаг 2x размера после выполнения дня."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('UPDATE users SET double_next_day = 0 WHERE topic_id = ?', (user_topic_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+def add_bank_money(amount):
+    """Добавляет деньги в общий банк."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('UPDATE bank SET total_money = total_money + ?, last_update = ?', 
+                      (amount, datetime.now().date()))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка добавления в банк: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_bank_total():
+    """Возвращает общую сумму в банке."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT total_money FROM bank LIMIT 1')
+    result = cursor.fetchone()
+    conn.close()
+    
+    return result[0] if result else 0
+
+def admin_add_points(user_topic_id, points):
+    """Админ добавляет очки пользователю."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('UPDATE users SET total_points = total_points + ? WHERE topic_id = ?', 
+                      (points, user_topic_id))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Ошибка добавления очков админом: {e}")
+        return False
+    finally:
+        conn.close()
+
+def admin_add_streak(user_topic_id, days):
+    """Админ добавляет дни серии."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('UPDATE users SET current_streak = current_streak + ? WHERE topic_id = ?', 
+                      (days, user_topic_id))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Ошибка добавления серии админом: {e}")
+        return False
+    finally:
+        conn.close()
+
+def admin_add_freeze(user_topic_id, days):
+    """Админ добавляет дни заморозки."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('UPDATE users SET freeze_days = freeze_days + ? WHERE topic_id = ?', 
+                      (days, user_topic_id))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Ошибка добавления заморозки админом: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_user_by_name_or_nickname(search):
+    """Находит пользователя по имени или прозвищу."""
+    conn = sqlite3.connect('volk_bot.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT topic_id, name, nickname 
+        FROM users 
+        WHERE name LIKE ? OR nickname LIKE ? OR topic_id = ?
+    ''', (f'%{search}%', f'%{search}%', search))
+    
+    users = cursor.fetchall()
+    conn.close()
+    return users
 
 if __name__ == '__main__':
     init_db()
